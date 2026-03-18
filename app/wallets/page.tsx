@@ -18,7 +18,7 @@ export default function WalletsPage() {
   useEffect(() => {
     const loadWallets = async () => {
       try {
-        const { data } = await api.get<Wallet[] | { data: Wallet[] }>('/mini-app/wallets');
+        const { data } = await api.get<Wallet[] | { data: Wallet[] }>('/wallets');
         setWallets(Array.isArray(data) ? data : data.data || []);
       } catch (error) {
         toast.error(getErrorMessage(error, 'Failed to load wallets'));

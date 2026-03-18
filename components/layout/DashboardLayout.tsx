@@ -16,7 +16,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <div className="lg:ml-64">
+      <div className="lg:mr-64">
         <Topbar onMenuClick={() => setSidebarOpen((prev) => !prev)} />
         <main className="p-4 lg:p-8">{children}</main>
       </div>

@@ -10,19 +10,28 @@ export default function Pagination({
   onPageChange: (nextPage: number) => void;
 }) {
   return (
-    <div className="mt-4 flex items-center justify-end gap-2 text-sm">
-      <Button variant="secondary" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-        Previous
-      </Button>
-      <span>
-        Page {page} of {totalPages}
-      </span>
+    <div className="mt-4 flex items-center justify-start gap-2 text-sm">
+      {/* Next (سمت راست در RTL) */}
       <Button
         variant="secondary"
         disabled={page >= totalPages}
         onClick={() => onPageChange(page + 1)}
       >
-        Next
+        بعدی
+      </Button>
+
+      {/* Info */}
+      <span className="text-slate-600">
+        صفحه {page} از {totalPages}
+      </span>
+
+      {/* Previous */}
+      <Button
+        variant="secondary"
+        disabled={page <= 1}
+        onClick={() => onPageChange(page - 1)}
+      >
+        قبلی
       </Button>
     </div>
   );

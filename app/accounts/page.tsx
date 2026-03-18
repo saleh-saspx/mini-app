@@ -1,40 +1,33 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
-import ConfirmationModal from '@/components/ui/ConfirmationModal';
-import Pagination from '@/components/ui/Pagination';
 import api from '@/lib/api';
-import { getErrorMessage } from '@/lib/errors';
 import { useAuth } from '@/context/AuthContext';
+import { getErrorMessage } from '@/lib/errors';
+import { Copy, Trash2, Edit3, Key, CheckCircle, XCircle, Pause } from 'lucide-react';
+import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import type { Account } from '@/types';
-
-const PAGE_SIZE = 8;
 
 export default function AccountsPage() {
   const { username } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [newAccount, setNewAccount] = useState({ username: '', password: '', subscription: '' });
+  const [actionUser, setActionUser] = useState<{ type: 'plan' | 'password' | 'terminate', username: string } | null>(null);
   const [planByUser, setPlanByUser] = useState<Record<string, string>>({});
   const [passwordByUser, setPasswordByUser] = useState<Record<string, string>>({});
-  const [terminateUser, setTerminateUser] = useState<string | null>(null);
 
   const fetchAccounts = async () => {
     if (!username) return;
     try {
       setLoading(true);
-      const { data } = await api.get<Account[] | { data: Account[] }>(`/mini-app/account/${username}`);
-      const rows = Array.isArray(data) ? data : data.data || [];
-      setAccounts(rows);
+      const { data } = await api.get<Account[] | { accounts: Account[] }>(`/accounts`);
+      setAccounts(Array.isArray(data) ? data : data.accounts || []);
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to load accounts'));
+      toast.error(getErrorMessage(error, 'بارگذاری اکانت‌ها با خطا مواجه شد'));
     } finally {
       setLoading(false);
     }
@@ -44,196 +37,159 @@ export default function AccountsPage() {
     void fetchAccounts();
   }, [username]);
 
-  const filteredAccounts = useMemo(
-    () => accounts.filter((item) => item.username.toLowerCase().includes(search.toLowerCase())),
-    [accounts, search]
-  );
-
-  const totalPages = Math.max(1, Math.ceil(filteredAccounts.length / PAGE_SIZE));
-  const paginatedAccounts = filteredAccounts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(1);
-  }, [page, totalPages]);
-
-  const createAccount = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!newAccount.username || !newAccount.password || !newAccount.subscription) {
-      toast.error('All fields are required to create account.');
-      return;
-    }
-
-    try {
-      setProcessing(true);
-      await api.post('/mini-app/store', newAccount);
-      toast.success('Account created successfully.');
-      setNewAccount({ username: '', password: '', subscription: '' });
-      await fetchAccounts();
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Create account failed'));
-    } finally {
-      setProcessing(false);
-    }
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} کپی شد`);
   };
 
-  const updatePlan = async (targetUsername: string) => {
-    const subscription = planByUser[targetUsername];
-    if (!subscription) return toast.error('Enter new subscription plan first.');
-
+  const handleActionConfirm = async () => {
+    if (!actionUser) return;
+    setProcessing(true);
     try {
-      setProcessing(true);
-      await api.post(`/mini-app/account/${targetUsername}/plan`, { subscription });
-      toast.success(`Plan updated for ${targetUsername}.`);
+      const { username, type } = actionUser;
+      if (type === 'plan') {
+        const subscription = planByUser[username];
+        if (!subscription) throw new Error('پلن جدید وارد نشده');
+        await api.post(`/account/${username}/plan`, { subscription });
+        toast.success(`پلن اکانت ${username} بروزرسانی شد`);
+      }
+      if (type === 'password') {
+        const password = passwordByUser[username];
+        if (!password) throw new Error('رمز عبور جدید وارد نشده');
+        await api.post(`/account/${username}/password`, { password });
+        toast.success(`رمز عبور ${username} بروزرسانی شد`);
+        setPasswordByUser((prev) => ({ ...prev, [username]: '' }));
+      }
+      if (type === 'terminate') {
+        await api.post(`/account/${username}/terminate`);
+        toast.success(`اکانت ${username} حذف شد`);
+      }
       await fetchAccounts();
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to update plan'));
+      toast.error(getErrorMessage(error, 'عملیات با خطا مواجه شد'));
     } finally {
       setProcessing(false);
-    }
-  };
-
-  const updatePassword = async (targetUsername: string) => {
-    const password = passwordByUser[targetUsername];
-    if (!password) return toast.error('Enter a new password first.');
-
-    try {
-      setProcessing(true);
-      await api.post(`/mini-app/account/${targetUsername}/password`, { password });
-      toast.success(`Password updated for ${targetUsername}.`);
-      setPasswordByUser((prev) => ({ ...prev, [targetUsername]: '' }));
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to update password'));
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const confirmTerminate = async () => {
-    if (!terminateUser) return;
-
-    try {
-      setProcessing(true);
-      await api.post(`/mini-app/account/${terminateUser}/terminate`);
-      toast.success(`Account ${terminateUser} terminated.`);
-      setTerminateUser(null);
-      await fetchAccounts();
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to terminate account'));
-    } finally {
-      setProcessing(false);
+      setActionUser(null);
     }
   };
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <Card title="Create Account">
-          <form onSubmit={createAccount} className="grid gap-3 md:grid-cols-4">
-            <input
-              placeholder="username"
-              value={newAccount.username}
-              onChange={(e) => setNewAccount((prev) => ({ ...prev, username: e.target.value }))}
-            />
-            <input
-              placeholder="password"
-              type="password"
-              value={newAccount.password}
-              onChange={(e) => setNewAccount((prev) => ({ ...prev, password: e.target.value }))}
-            />
-            <input
-              placeholder="subscription"
-              value={newAccount.subscription}
-              onChange={(e) => setNewAccount((prev) => ({ ...prev, subscription: e.target.value }))}
-            />
-            <Button type="submit" disabled={processing}>
-              Create
-            </Button>
-          </form>
-        </Card>
+      <div className="space-y-4 text-right">
 
-        <Card title="Accounts" action={<input placeholder="Search username..." value={search} onChange={(e) => setSearch(e.target.value)} />}>
-          {loading ? (
-            <p className="text-sm text-slate-500">Loading accounts...</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-slate-500">
-                    <th className="py-2">Username</th>
-                    <th className="py-2">Subscription</th>
-                    <th className="py-2">Status</th>
-                    <th className="py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedAccounts.map((account) => (
-                    <tr key={account.username} className="border-b align-top">
-                      <td className="py-3 pr-3 font-medium">{account.username}</td>
-                      <td className="py-3 pr-3">{account.subscription}</td>
-                      <td className="py-3 pr-3">{account.status ?? 'active'}</td>
-                      <td className="space-y-2 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <input
-                            className="w-40"
-                            placeholder="new subscription"
-                            value={planByUser[account.username] ?? ''}
-                            onChange={(e) =>
-                              setPlanByUser((prev) => ({ ...prev, [account.username]: e.target.value }))
-                            }
-                          />
-                          <Button
-                            variant="secondary"
-                            disabled={processing}
-                            onClick={() => updatePlan(account.username)}
-                          >
-                            Update Plan
-                          </Button>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <input
-                            className="w-40"
-                            placeholder="new password"
-                            type="password"
-                            value={passwordByUser[account.username] ?? ''}
-                            onChange={(e) =>
-                              setPasswordByUser((prev) => ({ ...prev, [account.username]: e.target.value }))
-                            }
-                          />
-                          <Button
-                            variant="secondary"
-                            disabled={processing}
-                            onClick={() => updatePassword(account.username)}
-                          >
-                            Update Password
-                          </Button>
-                          <Button
-                            variant="danger"
-                            disabled={processing}
-                            onClick={() => setTerminateUser(account.username)}
-                          >
-                            Terminate
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
-            </div>
-          )}
-        </Card>
+        {loading ? (
+          <p className="text-gray-500 text-center">در حال بارگذاری اکانت‌ها...</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+            {accounts.map(account => (
+              <Card key={account.username} className="flex flex-col justify-between p-4 gap-1 relative">
+                <div className="flex flex-col gap-1">
+  
+           <div className="flex flex-col gap-1">
+                  {/* Username */}
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold">{account.username}</span>
+                    <Copy
+                      className="cursor-pointer text-gray-400 hover:text-gray-700"
+                      size={16}
+                      onClick={() => copyToClipboard(account.username, 'نام کاربری')}
+                    />
+                  </div>
+
+                  {/* Password */}
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm">{account.password}</span>
+                    <Copy
+                      className="cursor-pointer text-gray-400 hover:text-gray-700"
+                      size={16}
+                      onClick={() => copyToClipboard(account.password, 'رمز عبور')}
+                    />
+                  </div>
+
+                  {/* Subscription */}
+                  <div className="text-sm text-gray-700">اشتراک: {account.subscription}</div>
+
+                  {/* Server */}
+                  <div className="flex justify-between items-center text-sm text-gray-600">
+                    <span>سرور: {account.server}</span>
+                    <Copy
+                      className="cursor-pointer text-gray-400 hover:text-gray-700"
+                      size={14}
+                      onClick={() => copyToClipboard(account.server, 'سرور')}
+                    />
+                  </div>
+
+                  {/* Secret */}
+                  <div className="flex justify-between items-center text-sm text-gray-600">
+                    <span>کد سکرت : {account.secret}</span>
+                    <Copy
+                      className="cursor-pointer text-gray-400 hover:text-gray-700"
+                      size={14}
+                      onClick={() => copyToClipboard(account.secret, 'Secret')}
+                    />
+                  </div>
+
+                  {/* Size */}
+                  <div className="text-sm text-gray-600">حجم: {account.size}</div>
+
+                  {/* Time */}
+                  <div className="text-sm text-gray-600">ثبت شده در: {account.time}</div>
+
+                  {/* Status */}
+                  <div className="flex items-center gap-1 text-sm font-semibold">
+                    {account.status === 'active' && <span className="text-green-600 flex items-center gap-1"><CheckCircle size={16}/> فعال</span>}
+                    {account.status === 'paused' && <span className="text-yellow-600 flex items-center gap-1"><Pause size={16}/> معلق</span>}
+                    {account.status === 'inactive' && <span className="text-red-600 flex items-center gap-1"><XCircle size={16}/> غیرفعال</span>}
+                  </div>
+                </div>
+
+                </div>
+
+                <div className="flex justify-end gap-2 mt-2">
+                  <button
+                    className="p-2 rounded hover:bg-gray-200"
+                    title="بروزرسانی پلن"
+                    onClick={() => setActionUser({ username: account.username, type: 'plan' })}
+                  ><Edit3 size={18} /></button>
+
+                  <button
+                    className="p-2 rounded hover:bg-gray-200"
+                    title="بروزرسانی رمز عبور"
+                    onClick={() => setActionUser({ username: account.username, type: 'password' })}
+                  ><Key size={18} /></button>
+
+                  <button
+                    className="p-2 rounded hover:bg-red-100 text-red-600"
+                    title="حذف اکانت"
+                    onClick={() => setActionUser({ username: account.username, type: 'terminate' })}
+                  ><Trash2 size={18} /></button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        <ConfirmationModal
+          open={!!actionUser}
+          title={
+            actionUser?.type === 'terminate' ? 'حذف اکانت' :
+            actionUser?.type === 'plan' ? 'بروزرسانی پلن' :
+            'بروزرسانی رمز عبور'
+          }
+          description={
+            actionUser?.type === 'terminate'
+              ? `آیا مطمئن هستید که می‌خواهید اکانت ${actionUser?.username ?? ''} را حذف کنید؟ این عملیات قابل بازگشت نیست.`
+              : actionUser?.type === 'plan'
+              ? `پلن جدید برای اکانت ${actionUser?.username ?? ''} وارد کنید و تایید کنید.`
+              : `رمز عبور جدید برای اکانت ${actionUser?.username ?? ''} وارد کنید و تایید کنید.`
+          }
+          confirmText={actionUser?.type === 'terminate' ? 'حذف اکانت' : 'تایید'}
+          onCancel={() => setActionUser(null)}
+          onConfirm={handleActionConfirm}
+          loading={processing}
+        />
+
       </div>
-
-      <ConfirmationModal
-        open={Boolean(terminateUser)}
-        title="Terminate account"
-        description={`Are you sure you want to terminate ${terminateUser}? This action cannot be undone.`}
-        confirmText="Terminate"
-        onCancel={() => setTerminateUser(null)}
-        onConfirm={confirmTerminate}
-        loading={processing}
-      />
     </DashboardLayout>
   );
 }

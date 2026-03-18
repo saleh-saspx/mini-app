@@ -22,11 +22,11 @@ export type Wallet = {
 };
 
 export type Package = {
-  id: string | number;
+  key: string | number;
   name: string;
   price: number;
-  duration?: string;
-  description?: string;
+  time?: string;
+  size?: string;
 };
 
 export type ApiError = {
